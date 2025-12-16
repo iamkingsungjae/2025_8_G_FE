@@ -1,6 +1,44 @@
 # Panel Insight Frontend
 
+https://github.com/user-attachments/assets/41e0dcd2-aeff-4c9c-8d2d-b4db43ce297c
+
 Panel Insight은 패널 데이터 분석 및 클러스터링을 위한 웹 애플리케이션입니다.
+
+## Preview
+<img width="1152" height="624" alt="패널인사이트" src="https://github.com/user-attachments/assets/758fcc30-4a6f-4612-aebc-1835bcb5b857" />
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="https://github.com/user-attachments/assets/f0db4b7f-c47e-499f-982c-c8bd51325c93" width="500"/>
+      <div style="font-size:12px;">패널 검색 결과 화면</div>
+    </td>
+    <td align="center" width="50%">
+      <img src="https://github.com/user-attachments/assets/fc2bea71-7e88-4c2d-b70c-9e377b54f837" width="500"/>
+      <div style="font-size:12px;">패널 상세 정보 및 인사이트</div>
+    </td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="https://github.com/user-attachments/assets/d449dd77-7991-434d-8c3b-5e78c98c6ff8" width="500"/>
+      <div style="font-size:12px;">클러스터링 UMAP 시각화 화면</div>
+    </td>
+    <td align="center" width="50%">
+      <img src="https://github.com/user-attachments/assets/b74b8ebd-f018-4bf8-800e-11e8c62e969c" width="500"/>
+      <div style="font-size:12px;">클러스터 비교 분석 화면</div>
+    </td>
+  </tr>
+</table>
+
+
+
+## Member
+- 유성재 / Lead, AI, Data
+- 김종유 / BE, FE
+- 문재원 / BE, AI
+- 김민수 / Data
 
 ## Tech Stack
 
