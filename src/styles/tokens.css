@@ -1,0 +1,142 @@
+/* 
+ * Design Tokens - Complete Dark Mode System
+ * 
+ * CSS 변수 기반 토큰 시스템
+ * 모든 컴포넌트에서 하드코딩 색상 제거 → 토큰 사용
+ */
+
+:root {
+  /* Background Layers - 깊은 밤하늘 느낌 */
+  --bg-0: #0B1220; /* 레벨 0: 매우 어두운 네이비 - 앱 배경, 무한 스크롤 영역 */
+  --surface-1: #111827; /* 레벨 1: 어두운 회색 - 카드, 패널, 모달, Drawer */
+  --surface-2: #1F2937; /* 레벨 2: 중간 회색 - Hover 상태, Active 영역, 선택된 항목 */
+  --surface-3: #374151; /* 레벨 3: 밝은 회색 - Input 필드, Select 박스, 포커스 영역 */
+
+  /* Text Hierarchy - 고대비로 가독성 향상 */
+  --text-primary: #F9FAFB;   /* 주요 텍스트: 제목, 중요 데이터, 숫자, 패널 ID (98% 밝기, WCAG AAA 7:1) */
+  --text-secondary: #E5E7EB; /* 보조 텍스트: 본문, 설명, 라벨, 필터 이름 (90% 밝기, WCAG AA 4.5:1) */
+  --text-tertiary: #9CA3AF;  /* 힌트 텍스트: placeholder, 비활성 상태, 메타 정보 (65% 밝기, WCAG A 3:1) */
+  --text-disabled: #6B7280;  /* 비활성 텍스트: disabled 상태, 사용 불가 항목 (45% 밝기) */
+
+  /* Borders & Dividers - 은은하게 구분 */
+  --border-primary: rgba(255, 255, 255, 0.10); /* 주요 테두리: 카드 외곽선, 패널 구분, 중요한 영역 분리 */
+  --border-secondary: rgba(255, 255, 255, 0.05); /* 보조 테두리: 내부 구분선, 리스트 아이템 구분 */
+  --border-accent: rgba(37, 99, 235, 0.30); /* 강조 테두리: Hover 상태, Focus 상태, 선택된 항목 (블루 글로우) */
+
+  /* Brand & Accents */
+  --brand-blue-500: #2563EB;
+  --brand-blue-300: #60A5FA;
+  --brand-purple-600: #7C3AED;
+  --brand-purple-300: #A78BFA;
+  
+  /* Q응답률 칩 색상 - 라이트 모드에서 어두운 색상 사용 */
+  --chip-blue-text: var(--brand-blue-500);
+
+  /* Semantics */
+  --success-500: #10B981;
+  --success-300: #6EE7B7;
+  --warning-500: #F59E0B;
+  --warning-300: #FCD34D;
+  --error-500: #EF4444;
+  --error-300: #FCA5A5;
+
+  /* Semantic tokens (컴포넌트가 참조) */
+  --background: var(--bg-0);
+  --foreground: var(--text-primary);
+  --muted-foreground: var(--text-tertiary);
+
+  --card: var(--surface-1);
+  --card-foreground: var(--text-secondary);
+
+  --hover-surface: var(--surface-2);
+  --focus-surface: var(--surface-3);
+
+  --primary: var(--brand-blue-300);
+  --primary-foreground: #0A0E1A; /* 다크 배경 위 대비 */
+
+  --ring: var(--brand-blue-300);
+  --input: var(--border-primary);
+  --border: var(--border-primary);
+
+  /* Elevation (shadow) - 깊이감 표현 */
+  --shadow-1: 0 4px 12px rgba(0, 0, 0, 0.4); /* 기본 카드 그림자 */
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.5); /* Hover 시 더 깊은 그림자 */
+  --shadow-3: 0 12px 40px rgba(0, 0, 0, 0.55); /* 모달/드로어 그림자 */
+
+  /* FX */
+  --glass: rgba(17, 24, 39, 0.60);
+  --glass-border-strong: rgba(255,255,255,0.15);
+  --glass-border-soft: rgba(255,255,255,0.05);
+
+  /* Transitions */
+  --t-fast: 150ms;
+  --t-base: 200ms;
+  --t-color: 300ms;
+}
+
+/* 라이트 모드 (기본값이 다크이므로 라이트 모드일 때만 오버라이드) */
+:root[data-theme="light"],
+:root.light {
+  /* Background Layers */
+  --bg-0: #FFFFFF;
+  --surface-1: #F8FAFC;
+  --surface-2: #F1F5F9;
+  --surface-3: #E5E7EB;
+
+  /* Text Hierarchy */
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-tertiary: #64748B;
+  --text-disabled: #94A3B8;
+
+  /* Borders & Rings */
+  --border-primary: #E5E7EB;
+  --border-secondary: #F1F5F9;
+  --border-accent: rgba(37, 99, 235, 0.20);
+
+  /* Semantic tokens */
+  --background: var(--bg-0);
+  --foreground: var(--text-primary);
+  --muted-foreground: var(--text-tertiary);
+
+  --card: var(--surface-1);
+  --card-foreground: var(--text-primary);
+
+  --hover-surface: var(--surface-2);
+  --focus-surface: var(--surface-3);
+
+  --primary: var(--brand-blue-500);
+  --primary-foreground: #FFFFFF;
+
+  --ring: var(--brand-blue-500);
+  --input: var(--border-primary);
+  --border: var(--border-primary);
+  
+  /* Q응답률 칩 색상 - 라이트 모드에서 어두운 색상 사용 */
+  --chip-blue-text: var(--brand-blue-500);
+
+  /* Elevation */
+  --shadow-1: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+  --shadow-2: 0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23);
+  --shadow-3: 0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23);
+
+  /* FX */
+  --glass: rgba(255, 255, 255, 0.65);
+  --glass-border-strong: rgba(17, 24, 39, 0.12);
+  --glass-border-soft: rgba(17, 24, 39, 0.05);
+}
+
+/* 다크 모드 전용 루트(이미 다크면 동일하게 유지) */
+:root,
+:root[data-theme="dark"],
+:root.dark {
+  color-scheme: dark;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* 라이트 모드일 때 color-scheme */
+:root[data-theme="light"],
+:root.light {
+  color-scheme: light;
+}

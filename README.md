@@ -1,0 +1,116 @@
+# Panel Insight Frontend
+
+Panel Insight은 패널 데이터 분석 및 클러스터링을 위한 웹 애플리케이션입니다.
+
+## Tech Stack
+
+- **React 18.3.1** - UI 라이브러리
+- **TypeScript 5.9.3** - 타입 안정성
+- **Vite 6.3.5** - 빌드 도구
+- **Radix UI** - 접근성 기반 UI 컴포넌트
+- **Tailwind CSS** - 스타일링
+- **Framer Motion** - 애니메이션
+- **Recharts** - 차트 라이브러리
+- **Sonner** - 토스트 알림
+
+## Getting Started
+
+### Installation
+
+```bash
+git clone https://github.com/hansung-sw-capstone-2025-2/2025_8_G_FE.git
+cd 2025_8_G_FE
+```
+
+```bash
+npm install
+```
+
+### Development
+
+```bash
+npm run dev
+```
+
+기본 포트는 5173입니다. 다른 포트로 실행하려면:
+
+```bash
+npm run dev:3001  # 포트 3001
+npm run dev:3002  # 포트 3002
+```
+
+### Build
+
+```bash
+npm run build
+```
+
+빌드 결과물은 `dist` 폴더에 생성됩니다.
+
+### Preview Build
+
+```bash
+npm run preview
+```
+
+## Project Structure
+
+```
+src/
+├── api/                    # API 클라이언트 (lib/utils.ts)
+├── components/             # 페이지 컴포넌트
+│   ├── drawers/           # 드로어 컴포넌트
+│   │   ├── FilterDrawer.tsx
+│   │   ├── PanelDetailDrawer.tsx
+│   │   ├── ClusterDetailDrawer.tsx
+│   │   ├── SummaryStatDrawer.tsx
+│   │   └── ExportDrawer.tsx
+│   ├── pages/             # 메인 페이지들
+│   │   ├── StartPage.tsx
+│   │   ├── ResultsPage.tsx
+│   │   ├── ClusterLabPage.tsx
+│   │   └── ComparePage.tsx
+│   └── charts/            # 차트 컴포넌트
+├── lib/                   # 유틸리티 및 헬퍼 함수
+│   ├── utils.ts           # API 유틸리티
+│   ├── config.ts          # 설정 (API URL 등)
+│   ├── history.ts         # 히스토리 관리
+│   ├── bookmarkManager.ts # 북마크 관리
+│   ├── presetManager.ts   # 프리셋 관리
+│   └── DarkModeSystem.tsx # 다크 모드 시스템
+├── types/                  # TypeScript 타입 정의
+├── ui/                     # UI 컴포넌트 라이브러리
+│   ├── base/              # 기본 UI 컴포넌트 (Radix UI 기반)
+│   ├── pi/                 # Panel Insight 전용 컴포넌트
+│   ├── profiling-ui-kit/   # 프로파일링 UI 컴포넌트
+│   │   └── components/      # 비교 분석 컴포넌트
+│   ├── summary/            # 요약 정보 컴포넌트
+│   └── filter/             # 필터 컴포넌트
+├── styles/                 # 전역 스타일시트
+│   ├── tokens.css          # 디자인 토큰
+│   └── globals.css         # 전역 스타일
+└── utils/                  # 유틸리티 함수
+```
+
+## Key Features
+
+- **패널 검색**: 텍스트 기반 패널 검색 및 필터링
+- **군집 분석**: HDBSCAN 기반 클러스터링 및 UMAP 시각화
+- **비교 분석**: 여러 군집 간 통계적 비교 분석
+- **패널 상세 정보**: 패널별 상세 정보 및 응답 데이터 조회
+- **데이터 내보내기**: CSV, JSON, TXT, PNG 형식으로 데이터 내보내기
+- **프리셋 관리**: 검색 필터 프리셋 저장 및 관리
+- **북마크**: 패널 북마크 기능
+- **다크 모드**: 다크/라이트 모드 지원
+
+## Environment Variables
+
+`.env` 파일에 다음 변수를 설정하세요:
+
+```env
+VITE_API_URL=http://127.0.0.1:8004
+```
+
+## License
+
+이 프로젝트는 한성대학교 기업연계 SW캡스톤디자인 수업에서 진행되었습니다.

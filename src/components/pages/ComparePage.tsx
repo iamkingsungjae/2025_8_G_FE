@@ -1,0 +1,933 @@
+import { useState, useMemo, useEffect } from 'react';
+import { Download, FileText, Image } from 'lucide-react';
+import { PICard } from '../../ui/pi/PICard';
+import { PIButton } from '../../ui/pi/PIButton';
+import { PIGroupSelectionModal } from '../../ui/pi/PIGroupSelectionModal';
+import { PIComparisonView } from '../../ui/profiling-ui-kit/components/comparison/PIComparisonView';
+import { ClusterComparisonData } from '../../ui/profiling-ui-kit/components/comparison/types';
+import { toast } from 'sonner';
+import { historyManager } from '../../lib/history';
+import { API_URL } from '../../lib/config';
+import { ComparePageEmptyState } from './ComparePageEmptyState';
+import { useDarkMode } from '../../lib/DarkModeSystem';
+import { CLUSTER_COLORS } from '../../ui/profiling-ui-kit/components/comparison/utils';
+
+interface CompareGroup {
+  id: string;
+  type: 'cluster' | 'segment';
+  label: string;
+  count: number;
+  percentage: number;
+  color: string;
+  description: string;
+  tags: string[];
+  evidence?: string[];
+  qualityWarnings?: Array<'low-sample' | 'low-coverage' | 'high-noise'>;
+}
+
+
+
+
+export function ComparePage() {
+  const { isDark } = useDarkMode();
+  const [selectedGroupA, setSelectedGroupA] = useState<CompareGroup | null>(null);
+  const [selectedGroupB, setSelectedGroupB] = useState<CompareGroup | null>(null);
+  
+  const [isGroupAModalOpen, setIsGroupAModalOpen] = useState(false);
+  const [isGroupBModalOpen, setIsGroupBModalOpen] = useState(false);
+
+  const [clusterGroups, setClusterGroups] = useState<CompareGroup[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingClusters, setLoadingClusters] = useState(true);
+  const [comparisonData, setComparisonData] = useState<ClusterComparisonData | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [hasClusters, setHasClusters] = useState(false);
+  const clusterColors = CLUSTER_COLORS;
+
+  useEffect(() => {
+    const fetchClusters = async () => {
+      setLoadingClusters(true);
+      try {
+        const lastSessionId = localStorage.getItem('last_clustering_session_id');
+        if (!lastSessionId) {
+          setHasClusters(false);
+          setLoadingClusters(false);
+          return;
+        }
+        
+        setSessionId(lastSessionId);
+        
+        const response = await fetch(`${API_URL}/api/precomputed/profiles`);
+        if (!response.ok) {
+          throw new Error('Precomputed 클러스터 프로파일을 가져올 수 없습니다.');
+        }
+        
+        const data = await response.json();
+        if (!data.success || !data.data || data.data.length === 0) {
+          throw new Error('Precomputed 클러스터 데이터가 없습니다.');
+        }
+        
+        const clusterNamesMapStr = localStorage.getItem('cluster_names_map');
+        const clusterNamesMap: Record<number, string> = clusterNamesMapStr ? JSON.parse(clusterNamesMapStr) : {};
+        
+        const groups: CompareGroup[] = data.data.map((profile: any, idx: number) => {
+          const clusterName = profile.name || clusterNamesMap[profile.cluster] || `C${profile.cluster + 1}`;
+          const totalSize = data.data.reduce((sum: number, p: any) => sum + p.size, 0);
+          const percentage = parseFloat(((profile.size / totalSize) * 100).toFixed(2));
+          
+          return {
+            id: `C${profile.cluster + 1}`,
+            type: 'cluster' as const,
+            label: clusterName,
+            count: profile.size,
+            percentage: percentage,
+            color: clusterColors[idx % clusterColors.length],
+            description: clusterName,
+            tags: [],
+            evidence: [],
+            qualityWarnings: [],
+          };
+        });
+        
+        setClusterGroups(groups);
+        setHasClusters(true);
+        
+        if (groups.length > 0 && !selectedGroupA) {
+          setSelectedGroupA(groups[0]);
+        }
+        if (groups.length > 1 && !selectedGroupB) {
+          setSelectedGroupB(groups[1]);
+        }
+      } catch (error) {
+        console.error('[비교 분석] 클러스터 목록 가져오기 실패:', error);
+        setHasClusters(false);
+        setClusterGroups([]);
+      } finally {
+        setLoadingClusters(false);
+      }
+    };
+    
+    fetchClusters();
+  }, []);
+
+  useEffect(() => {
+    const fetchComparison = async () => {
+      if (!selectedGroupA || !selectedGroupB || !sessionId) {
+        return;
+      }
+      
+      setLoading(true);
+      try {
+        const clusterAId = parseInt(selectedGroupA.id.replace('C', '')) - 1;
+        const clusterBId = parseInt(selectedGroupB.id.replace('C', '')) - 1;
+        
+        if (clusterAId === clusterBId) {
+          toast.error('같은 군집끼리는 비교할 수 없습니다. 다른 군집을 선택해주세요.');
+          setLoading(false);
+          return;
+        }
+        
+        const response = await fetch(`${API_URL}/api/precomputed/comparison/${clusterAId}/${clusterBId}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        
+        if (!response.ok) {
+          let errorText = '';
+          let errorData: any = {};
+          
+          try {
+            errorText = await response.text();
+            console.error('[Precomputed 비교 분석 API 오류]', {
+              status: response.status,
+              statusText: response.statusText,
+              errorText: errorText.substring(0, 500),
+              clusterA: clusterAId,
+              clusterB: clusterBId,
+            });
+            
+            try {
+              errorData = JSON.parse(errorText);
+            } catch {
+              errorData = { detail: errorText };
+            }
+          } catch {
+            errorData = { detail: `HTTP ${response.status}: ${response.statusText}` };
+          }
+          
+          const errorDetail = errorData.detail || errorData.message || errorText || `HTTP ${response.status}`;
+          let detailedError = `[Precomputed 비교 분석 실패]\n\n`;
+          detailedError += `클러스터: ${clusterAId} vs ${clusterBId}\n`;
+          detailedError += `상태 코드: ${response.status}\n`;
+          detailedError += `오류: ${errorDetail}\n\n`;
+          
+          if (response.status === 404) {
+            detailedError += '비교 분석 데이터가 없습니다.\n\n';
+            detailedError += '해결 방법:\n';
+            detailedError += '1. Precomputed 데이터 재생성:\n';
+            detailedError += '   python server/app/clustering/generate_precomputed_data.py\n';
+            detailedError += '2. 비교 분석 JSON 파일 확인:\n';
+            detailedError += '   clustering_data/data/precomputed/comparison_results.json\n';
+          } else if (response.status === 400) {
+            detailedError += '잘못된 클러스터 ID입니다.\n';
+            detailedError += `클러스터 ${clusterAId} 또는 ${clusterBId}가 존재하지 않습니다.`;
+          } else if (response.status >= 500) {
+            detailedError += '서버 내부 오류입니다.\n';
+            detailedError += '서버 로그를 확인하세요.';
+          }
+          
+          toast.error(`비교 분석 실패 (${response.status})`, {
+            description: errorDetail,
+            duration: 10000,
+          });
+          setLoading(false);
+          return;
+        }
+        
+        const responseData = await response.json();
+        
+        const data = responseData.success ? responseData.data : responseData;
+        
+        if (data.error) {
+          console.error('[비교 분석 오류]', data.error);
+          throw new Error(data.error);
+        }
+        
+        const groupALabel = selectedGroupA?.label || `C${clusterAId + 1}`;
+        const groupBLabel = selectedGroupB?.label || `C${clusterBId + 1}`;
+        
+        const allComparisons = data.comparison || [];
+        
+        const continuousComparisons = allComparisons
+          .filter((item: any) => item.type === 'continuous' && item.cohens_d !== undefined && item.cohens_d !== null)
+          .map((item: any) => ({
+            ...item,
+            abs_cohens_d: Math.abs(item.cohens_d || 0),
+          }))
+          .sort((a: any, b: any) => b.abs_cohens_d - a.abs_cohens_d)
+          .slice(0, 5)
+          .map((item: any) => {
+            const { abs_cohens_d, ...rest } = item;
+            return rest;
+          });
+        
+        const binaryComparisons = allComparisons
+          .filter((item: any) => item.type === 'binary' && (item.abs_diff_pct !== undefined && item.abs_diff_pct !== null))
+          .map((item: any) => ({
+            ...item,
+            abs_diff_pct_value: Math.abs(item.abs_diff_pct || 0),
+          }))
+          .sort((a: any, b: any) => b.abs_diff_pct_value - a.abs_diff_pct_value)
+          .slice(0, 5)
+          .map((item: any) => {
+            const { abs_diff_pct_value, ...rest } = item;
+            return rest;
+          });
+        
+        const totalCount = (data.group_a?.count ?? 0) + (data.group_b?.count ?? 0);
+        const convertedData: ClusterComparisonData = {
+          group_a: {
+            id: data.group_a?.id ?? clusterAId,
+            count: data.group_a?.count ?? 0,
+            percentage: totalCount > 0 ? parseFloat(((data.group_a?.count ?? 0) / totalCount * 100).toFixed(2)) : 0,
+            label: groupALabel,
+          },
+          group_b: {
+            id: data.group_b?.id ?? clusterBId,
+            count: data.group_b?.count ?? 0,
+            percentage: totalCount > 0 ? parseFloat(((data.group_b?.count ?? 0) / totalCount * 100).toFixed(2)) : 0,
+            label: groupBLabel,
+          },
+          comparison: allComparisons,
+          highlights: {
+            num_top: continuousComparisons,
+            bin_cat_top: binaryComparisons,
+          },
+        };
+        
+        setComparisonData(convertedData);
+        
+        if (selectedGroupA && selectedGroupB) {
+          const historyItem = historyManager.createComparisonHistory(
+            {
+              id: selectedGroupA.id,
+              name: selectedGroupA.label,
+              color: selectedGroupA.color
+            },
+            {
+              id: selectedGroupB.id,
+              name: selectedGroupB.label,
+              color: selectedGroupB.color
+            },
+            'difference', // 기본 분석 타입
+            {
+              comparison: allComparisons,
+              highlights: {
+                continuous: continuousComparisons,
+                binary: binaryComparisons
+              },
+            }
+          );
+          historyManager.save(historyItem);
+        }
+      } catch (error) {
+        console.error('[비교 분석 실패] 상세 오류:', {
+          error,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorStack: error instanceof Error ? error.stack : undefined,
+          selectedGroupA: selectedGroupA?.id,
+          selectedGroupB: selectedGroupB?.id,
+          sessionId,
+        });
+        toast.error(`비교 분석 실행 실패: ${error instanceof Error ? error.message : String(error)}`);
+        setComparisonData(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchComparison();
+  }, [selectedGroupA, selectedGroupB, sessionId]);
+
+
+
+
+
+
+  useMemo(() => {
+    if (!selectedGroupA && clusterGroups.length > 0) {
+      setSelectedGroupA(clusterGroups[0]);
+    }
+    if (!selectedGroupB && clusterGroups.length > 1) {
+      setSelectedGroupB(clusterGroups[1]);
+    }
+  }, [clusterGroups]);
+
+
+
+
+  const downloadCSV = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const getCurrentActiveChartId = (): string | null => {
+    const charts = ['radar', 'heatmap', 'stacked', 'index'];
+    for (const chartId of charts) {
+      const element = document.querySelector(`[data-chart-id="${chartId}"]`) as HTMLElement | null;
+      if (element && element.offsetParent !== null) {
+        return chartId;
+      }
+    }
+    return null;
+  };
+
+  const downloadChartPNG = async (chartId?: string) => {
+    const activeChartId = chartId || getCurrentActiveChartId();
+    if (!activeChartId) {
+      toast.error('내보낼 차트를 찾을 수 없습니다.');
+      return;
+    }
+    try {
+      if (!selectedGroupA || !selectedGroupB || !comparisonData) {
+        toast.error('비교할 그룹을 먼저 선택해주세요');
+        return;
+      }
+
+      toast.info('PNG 생성 중...', { duration: 3000 });
+
+      const element = document.querySelector(`[data-chart-id="${activeChartId}"]`) as HTMLElement | null;
+      
+      if (!element) {
+        toast.error('내보낼 차트를 찾을 수 없습니다.');
+        return;
+      }
+
+      const rect = element.getBoundingClientRect();
+      const elementWidth = rect.width || element.scrollWidth || element.offsetWidth;
+      const elementHeight = rect.height || element.scrollHeight || element.offsetHeight;
+
+      if (elementWidth === 0 || elementHeight === 0) {
+        console.error('요소의 크기가 0입니다:', { elementWidth, elementHeight, rect });
+        toast.error('차트가 아직 완전히 로드되지 않았습니다. 잠시 후 다시 시도해주세요.');
+        return;
+      }
+
+      const html2canvas = (await import('html2canvas')).default;
+
+      const canvas = await html2canvas(element, {
+        backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        foreignObjectRendering: false,
+        scrollX: 0,
+        scrollY: 0,
+        ignoreElements: (element) => {
+          if (element.tagName === 'CANVAS') return true;
+          if (element.tagName === 'PATTERN') return true;
+          if (element instanceof SVGElement && element.tagName === 'pattern') return true;
+          return false;
+        },
+        onclone: (clonedDoc) => {
+          const allPatterns = clonedDoc.querySelectorAll('pattern');
+          const allPatternIds = new Set<string>();
+          allPatterns.forEach((pattern) => {
+            const id = pattern.getAttribute('id');
+            if (id) allPatternIds.add(id);
+            pattern.remove();
+          });
+          
+          const allElements = clonedDoc.querySelectorAll('*');
+          allElements.forEach((el) => {
+            const element = el as HTMLElement | SVGElement;
+            
+            const fill = element.getAttribute('fill');
+            if (fill && fill.includes('url(#')) {
+              element.setAttribute('fill', isDark ? 'rgba(31, 41, 55, 0.5)' : 'rgba(229, 231, 235, 0.5)');
+            }
+            
+            const stroke = element.getAttribute('stroke');
+            if (stroke && stroke.includes('url(#')) {
+              element.setAttribute('stroke', isDark ? 'rgba(255, 255, 255, 0.1)' : '#E5E7EB');
+            }
+            
+            const styleAttr = element.getAttribute('style');
+            if (styleAttr) {
+              let newStyle = styleAttr;
+              
+              if (newStyle.includes('url(#')) {
+                newStyle = newStyle.replace(/url\(#[^)]+\)/gi, (match) => {
+                  const matchId = match.match(/url\(#([^)]+)\)/);
+                  if (matchId && allPatternIds.has(matchId[1])) {
+                    return isDark ? 'rgba(31, 41, 55, 0.5)' : 'rgba(229, 231, 235, 0.5)';
+                  }
+                  return isDark ? 'rgba(31, 41, 55, 0.5)' : 'rgba(229, 231, 235, 0.5)';
+                });
+              }
+              
+              if (newStyle.includes('linear-gradient')) {
+                newStyle = newStyle.replace(/linear-gradient\([^)]+\)/gi, isDark ? 'rgba(29, 78, 216, 0.5)' : 'rgba(29, 78, 216, 0.5)');
+              }
+              
+              if (newStyle.includes('radial-gradient')) {
+                newStyle = newStyle.replace(/radial-gradient\([^)]+\)/gi, isDark ? 'rgba(29, 78, 216, 0.5)' : 'rgba(29, 78, 216, 0.5)');
+              }
+              
+              if (newStyle !== styleAttr) {
+                element.setAttribute('style', newStyle);
+              }
+            }
+          });
+          
+          const styleSheets = clonedDoc.querySelectorAll('style');
+          styleSheets.forEach((style) => {
+            if (style.textContent) {
+              let newContent = style.textContent;
+              
+              if (newContent.includes('oklch')) {
+                newContent = newContent.replace(
+                  /oklch\(([^)]+)\)/g,
+                  (_match, params) => {
+                    const parts = params.trim().split(/\s+/);
+                    const L = parseFloat(parts[0]) || 0.5;
+                    if (isDark) {
+                      if (L > 0.7) return 'rgb(249, 250, 251)';
+                      if (L > 0.5) return 'rgb(209, 213, 219)';
+                      if (L > 0.3) return 'rgb(156, 163, 175)';
+                      return 'rgb(31, 41, 55)';
+                    } else {
+                      if (L > 0.7) return 'rgb(255, 255, 255)';
+                      if (L > 0.5) return 'rgb(148, 163, 184)';
+                      if (L > 0.3) return 'rgb(100, 116, 139)';
+                      return 'rgb(15, 23, 42)';
+                    }
+                  }
+                );
+              }
+              
+              newContent = newContent.replace(/url\(#[^)]+\)/gi, isDark ? 'rgba(31, 41, 55, 0.5)' : 'rgba(229, 231, 235, 0.5)');
+              
+              if (newContent.includes('linear-gradient')) {
+                newContent = newContent.replace(/linear-gradient\([^)]+\)/gi, isDark ? 'rgba(29, 78, 216, 0.5)' : 'rgba(29, 78, 216, 0.5)');
+              }
+              
+              if (newContent.includes('radial-gradient')) {
+                newContent = newContent.replace(/radial-gradient\([^)]+\)/gi, isDark ? 'rgba(29, 78, 216, 0.5)' : 'rgba(29, 78, 216, 0.5)');
+              }
+              
+              if (newContent !== style.textContent) {
+                style.textContent = newContent;
+              }
+            }
+          });
+          
+          const elementsWithOklch = clonedDoc.querySelectorAll('[style*="oklch"]');
+          const maxElementsToProcess = 1000;
+          for (let i = 0; i < Math.min(elementsWithOklch.length, maxElementsToProcess); i++) {
+            const el = elementsWithOklch[i] as HTMLElement;
+            if (el.closest('svg')) continue;
+            
+            if (el.style.cssText && el.style.cssText.includes('oklch')) {
+              el.style.cssText = el.style.cssText.replace(
+                /oklch\([^)]+\)/g,
+                () => isDark ? 'rgb(31, 41, 55)' : 'rgb(255, 255, 255)'
+              );
+            }
+          }
+          
+          const canvases = clonedDoc.querySelectorAll('canvas');
+          canvases.forEach((c) => {
+            const canvas = c as HTMLCanvasElement;
+            if (canvas.width === 0 || canvas.height === 0) {
+              canvas.width = canvas.clientWidth || 1;
+              canvas.height = canvas.clientHeight || 1;
+            }
+          });
+          
+          const svgs = clonedDoc.querySelectorAll('svg');
+          svgs.forEach((svg) => {
+            const svgEl = svg as SVGSVGElement;
+            const viewBox = svgEl.getAttribute('viewBox');
+            let width = svgEl.getAttribute('width');
+            let height = svgEl.getAttribute('height');
+            
+            if (!width || width === '0' || !height || height === '0') {
+              if (viewBox) {
+                const parts = viewBox.split(' ').map(Number);
+                if (parts.length >= 4 && parts[2] > 0 && parts[3] > 0) {
+                  width = String(parts[2]);
+                  height = String(parts[3]);
+                  svgEl.setAttribute('width', width);
+                  svgEl.setAttribute('height', height);
+                }
+              } else {
+                width = '800';
+                height = '600';
+                svgEl.setAttribute('width', width);
+                svgEl.setAttribute('height', height);
+              }
+            }
+          });
+        },
+      });
+
+      const link = document.createElement('a');
+      const filename = `${activeChartId}_${selectedGroupA.label}_vs_${selectedGroupB.label}_${new Date().toISOString().split('T')[0]}.png`;
+      link.download = filename;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      
+      toast.success('PNG 파일이 다운로드되었습니다');
+    } catch (error) {
+      console.error('PNG export error:', error);
+      toast.error(`PNG 내보내기 중 오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const exportToCSV = () => {
+    if (!comparisonData || !selectedGroupA || !selectedGroupB) {
+      toast.error('비교할 그룹을 먼저 선택해주세요');
+      return;
+    }
+
+    const headers = [
+      '변수명',
+      '한글명',
+      '타입',
+      `${selectedGroupA.label} 평균/비율`,
+      `${selectedGroupB.label} 평균/비율`,
+      '차이',
+      '차이(%)',
+      'Lift(%)',
+      'Cohen\'s d',
+      'p-value',
+      '유의성'
+    ];
+
+    const rows: string[][] = [headers];
+
+    comparisonData.comparison.forEach((item: any) => {
+      const featureNameKr = item.feature_name_kr || item.feature;
+      let groupAValue = '';
+      let groupBValue = '';
+      let difference = '';
+      let differencePct = '';
+      
+      if (item.type === 'continuous') {
+        const origA = item.original_group_a_mean ?? item.group_a_mean;
+        const origB = item.original_group_b_mean ?? item.group_b_mean;
+        groupAValue = origA !== null && origA !== undefined ? origA.toFixed(2) : '-';
+        groupBValue = origB !== null && origB !== undefined ? origB.toFixed(2) : '-';
+        difference = item.difference !== null && item.difference !== undefined ? item.difference.toFixed(2) : '-';
+        differencePct = item.lift_pct !== null && item.lift_pct !== undefined ? item.lift_pct.toFixed(2) : '-';
+      } else if (item.type === 'binary') {
+        groupAValue = item.group_a_ratio !== null && item.group_a_ratio !== undefined ? (item.group_a_ratio * 100).toFixed(2) + '%' : '-';
+        groupBValue = item.group_b_ratio !== null && item.group_b_ratio !== undefined ? (item.group_b_ratio * 100).toFixed(2) + '%' : '-';
+        const absDiffPct = item.abs_diff_pct ?? Math.abs(item.difference) * 100;
+        difference = absDiffPct !== null && absDiffPct !== undefined ? absDiffPct.toFixed(2) + '%p' : '-';
+        differencePct = item.lift_pct !== null && item.lift_pct !== undefined ? item.lift_pct.toFixed(2) : '-';
+      } else {
+        groupAValue = '-';
+        groupBValue = '-';
+        difference = '-';
+        differencePct = '-';
+      }
+
+      rows.push([
+        item.feature || '',
+        featureNameKr || '',
+        item.type || '',
+        groupAValue,
+        groupBValue,
+        difference,
+        differencePct,
+        item.lift_pct !== null && item.lift_pct !== undefined ? item.lift_pct.toFixed(2) : '-',
+        item.cohens_d !== null && item.cohens_d !== undefined ? item.cohens_d.toFixed(3) : '-',
+        item.p_value !== null && item.p_value !== undefined ? item.p_value.toFixed(4) : '-',
+        item.significant ? '유의' : '비유의'
+      ]);
+    });
+
+    const csvContent = '\uFEFF' + rows.map(row => 
+      row.map(cell => {
+        const cellStr = String(cell || '');
+        if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+          return `"${cellStr.replace(/"/g, '""')}"`;
+        }
+        return cellStr;
+      }).join(',')
+    ).join('\n');
+
+    const filename = `비교분석_${selectedGroupA.label}_vs_${selectedGroupB.label}_${new Date().toISOString().split('T')[0]}.csv`;
+    downloadCSV(csvContent, filename);
+    toast.success('CSV 파일이 다운로드되었습니다');
+  };
+
+  if (!loadingClusters && !hasClusters) {
+    return (
+      <div className="min-h-screen" style={{ background: 'var(--background)' }}>
+        <ComparePageEmptyState />
+      </div>
+    );
+  }
+
+  if (loadingClusters) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--background)' }}>
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--primary-500)] mb-4"></div>
+          <p style={{ fontSize: '14px', fontWeight: 500, color: 'var(--neutral-600)' }}>
+            클러스터 목록을 불러오는 중...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen" style={{ background: 'var(--background)' }}>
+      {/* SECTION-0: Compare Bar */}
+      <div className="sticky top-0 z-40 border-b" style={{ 
+        height: '72px', 
+        background: 'var(--card)', 
+        borderColor: 'var(--border)' 
+      }}>
+        <div className="mx-auto px-20 h-full flex items-center justify-between">
+          {/* Left: Controls */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              {selectedGroupA && selectedGroupB ? (
+                <>
+                  {/* Group A Info */}
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-2 h-2 rounded-full"
+                      style={{ background: selectedGroupA.color }}
+                    />
+                    <span className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      {selectedGroupA.label}
+                    </span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                      {selectedGroupA.count.toLocaleString()}명
+                    </span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                      {selectedGroupA.percentage.toFixed(2)}%
+                    </span>
+                  </div>
+
+                  <span className="text-base font-medium" style={{ color: 'var(--text-tertiary)' }}>vs</span>
+
+                  {/* Group B Info */}
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-2 h-2 rounded-full"
+                      style={{ background: selectedGroupB.color }}
+                    />
+                    <span className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      {selectedGroupB.label}
+                    </span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                      {selectedGroupB.count.toLocaleString()}명
+                    </span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                      {selectedGroupB.percentage.toFixed(2)}%
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  비교할 그룹을 선택해주세요
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Right: Actions */}
+          <div className="flex items-center gap-2">
+            <PIButton 
+              variant="ghost" 
+              size="small"
+              onClick={exportToCSV}
+            >
+              <FileText className="w-4 h-4 mr-1" />
+              CSV
+            </PIButton>
+            <PIButton 
+              variant="ghost" 
+              size="small"
+              onClick={() => downloadChartPNG()}
+            >
+              <Image className="w-4 h-4 mr-1" />
+              PNG
+            </PIButton>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="mx-auto px-20 py-6 space-y-6 comparison-chart-container">
+        {/* SECTION-1: Cluster Selection UI */}
+        <div className="grid grid-cols-12 gap-6">
+          <div className="col-span-12">
+            <PICard className="p-6">
+              <div className="flex items-center gap-6">
+                {/* Group A Selection */}
+                <div className="flex-1">
+                  <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                    첫 번째 군집 선택
+                  </label>
+                  <button
+                    className="w-full px-4 py-3 rounded-lg border-2 flex items-center justify-between hover:border-[var(--primary-500)] transition-colors"
+                    style={{
+                      borderColor: selectedGroupA?.color || 'var(--border)',
+                      background: selectedGroupA?.color ? `${selectedGroupA.color}10` : 'transparent',
+                    }}
+                    onClick={() => setIsGroupAModalOpen(true)}
+                  >
+                    <div className="flex items-center gap-3">
+                      {selectedGroupA && (
+                        <>
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ background: selectedGroupA.color }}
+                          />
+                          <div className="text-left">
+                            <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                              {selectedGroupA.label}
+                            </div>
+                            <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                              {selectedGroupA.count.toLocaleString()}명 · {selectedGroupA.percentage.toFixed(2)}%
+                            </div>
+                          </div>
+                        </>
+                      )}
+                      {!selectedGroupA && (
+                        <span style={{ color: 'var(--text-secondary)' }}>군집 선택</span>
+                      )}
+                    </div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>▼</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center">
+                  <span className="text-lg font-semibold" style={{ color: 'var(--text-tertiary)' }}>VS</span>
+                </div>
+
+                {/* Group B Selection */}
+                <div className="flex-1">
+                  <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                    두 번째 군집 선택
+                  </label>
+                  <button
+                    className="w-full px-4 py-3 rounded-lg border-2 flex items-center justify-between hover:border-[var(--primary-500)] transition-colors"
+                    style={{
+                      borderColor: selectedGroupB?.color || 'var(--border)',
+                      background: selectedGroupB?.color ? `${selectedGroupB.color}10` : 'transparent',
+                    }}
+                    onClick={() => setIsGroupBModalOpen(true)}
+                  >
+                    <div className="flex items-center gap-3">
+                      {selectedGroupB && (
+                        <>
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ background: selectedGroupB.color }}
+                          />
+                          <div className="text-left">
+                            <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                              {selectedGroupB.label}
+                            </div>
+                            <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                              {selectedGroupB.count.toLocaleString()}명 · {selectedGroupB.percentage.toFixed(2)}%
+                            </div>
+                          </div>
+                        </>
+                      )}
+                      {!selectedGroupB && (
+                        <span style={{ color: 'var(--text-secondary)' }}>군집 선택</span>
+                      )}
+                    </div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>▼</span>
+                  </button>
+                </div>
+              </div>
+            </PICard>
+          </div>
+        </div>
+
+        {/* SECTION-2: Difference Panel - Figma Component */}
+        {selectedGroupA && selectedGroupB ? (
+          <div className="grid grid-cols-12 gap-6">
+            <div className="col-span-12">
+              {loading ? (
+                <div className="flex items-center justify-center p-12 rounded-2xl"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.8)',
+                    backdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(17, 24, 39, 0.10)',
+                    boxShadow: '0 6px 16px rgba(0, 0, 0, 0.08)',
+                  }}
+                >
+                  <p style={{ fontSize: '14px', fontWeight: 500, color: '#64748B' }}>
+                    비교 분석 중...
+                  </p>
+                </div>
+              ) : comparisonData ? (
+                <div data-comparison-view>
+                  <PIComparisonView data={comparisonData} />
+                </div>
+              ) : (
+                <div className="flex items-center justify-center p-12 rounded-2xl"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.8)',
+                    backdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(17, 24, 39, 0.10)',
+                    boxShadow: '0 6px 16px rgba(0, 0, 0, 0.08)',
+                  }}
+                >
+                  <p style={{ fontSize: '14px', fontWeight: 500, color: '#64748B' }}>
+                    비교 분석 데이터를 불러올 수 없습니다.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-12 gap-6">
+            <div className="col-span-12">
+              <PICard className="relative overflow-visible h-[540px] p-5" data-export-chart>
+                <div className="flex items-center justify-center h-full">
+                  <p style={{ fontSize: '14px', fontWeight: 500, color: 'var(--neutral-600)' }}>
+                    비교할 그룹을 선택해주세요
+                  </p>
+                </div>
+              </PICard>
+            </div>
+          </div>
+        )}
+
+
+      </div>
+
+      {/* FOOTER: Sticky Action Bar */}
+      <div
+        className="sticky bottom-0 z-30 border-t shadow-[0_-4px_12px_rgba(0,0,0,0.08)]"
+        style={{ 
+          height: '56px',
+          background: 'var(--card)',
+          borderColor: 'var(--border)'
+        }}
+      >
+        <div className="mx-auto px-20 h-full flex items-center justify-between">
+          <div className="text-sm text-[var(--neutral-600)]">
+            선택:{' '}
+            <span className="font-semibold" style={{ color: selectedGroupA?.color }}>
+              {selectedGroupA?.label}
+            </span>
+            {' vs '}
+            <span className="font-semibold" style={{ color: selectedGroupB?.color }}>
+              {selectedGroupB?.label}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <PIButton 
+              variant="ghost" 
+              size="small"
+              onClick={exportToCSV}
+            >
+              <Download className="w-4 h-4 mr-1" />
+              CSV
+            </PIButton>
+            <PIButton 
+              variant="primary" 
+              size="small"
+              onClick={() => downloadChartPNG()}
+            >
+              <Download className="w-4 h-4 mr-1" />
+              PNG
+            </PIButton>
+          </div>
+        </div>
+      </div>
+
+      {/* Modals */}
+      <PIGroupSelectionModal
+        isOpen={isGroupAModalOpen}
+        onClose={() => setIsGroupAModalOpen(false)}
+        onSelect={(group) => {
+          setSelectedGroupA(group);
+          setIsGroupAModalOpen(false);
+        }}
+        groups={clusterGroups}
+        title="그룹 A 선택"
+        selectedGroup={selectedGroupA}
+      />
+
+      <PIGroupSelectionModal
+        isOpen={isGroupBModalOpen}
+        onClose={() => setIsGroupBModalOpen(false)}
+        onSelect={(group) => {
+          setSelectedGroupB(group);
+          setIsGroupBModalOpen(false);
+        }}
+        groups={clusterGroups}
+        title="그룹 B 선택"
+        selectedGroup={selectedGroupB}
+      />
+
+    </div>
+  );
+}
