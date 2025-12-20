@@ -1,6 +1,7 @@
 # Panel Insight Frontend
 
-https://github.com/user-attachments/assets/41e0dcd2-aeff-4c9c-8d2d-b4db43ce297c
+![와쏘베쏘 (1)](https://github.com/user-attachments/assets/418c36e9-7f78-484e-add6-4c2af297c9fc)
+
 
 Panel Insight은 패널 데이터 분석 및 클러스터링을 위한 웹 애플리케이션입니다.
 
